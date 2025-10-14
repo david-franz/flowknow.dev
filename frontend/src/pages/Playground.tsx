@@ -7,6 +7,7 @@ import {
   createKnowledgeBase,
   getKnowledgeBase,
   getKnowledgeDocument,
+  getKnowledgeDocumentUrl,
   ingestFile,
   ingestText,
   listKnowledgeBases,
@@ -312,6 +313,12 @@ export default function Playground() {
 
   const totalDocuments = useMemo(() => knowledgeBases.reduce((acc, kb) => acc + kb.document_count, 0), [knowledgeBases])
   const totalChunks = useMemo(() => knowledgeBases.reduce((acc, kb) => acc + kb.chunk_count, 0), [knowledgeBases])
+  const previewUrl = useMemo(() => {
+    if (!selectedId || !documentDetail?.file_available) {
+      return null
+    }
+    return getKnowledgeDocumentUrl(selectedId, documentDetail.id)
+  }, [selectedId, documentDetail])
 
   const refreshKnowledgeBases = async (targetId?: string | null) => {
     setLoadingList(true)
@@ -501,14 +508,14 @@ export default function Playground() {
             <span className="rotate-90 whitespace-nowrap tracking-widest">Flowknow</span>
           </div>
         ) : (
-          <div className="flex h-full flex-col gap-4 overflow-hidden">
+          <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-300">Playground</h2>
               <p className="mt-1 text-xs text-slate-500 leading-relaxed dark:text-slate-300">
                 Create and generate knowledge bases that power Flowport retrieval. Configure chunking and structure before ingesting content.
               </p>
             </div>
-            <div className="flex-1 space-y-4 overflow-y-auto pr-1">
+            <div className="flex-1 min-h-0 space-y-4 overflow-y-auto pr-1">
               <SidebarSection title="Create knowledge base" description="Set up a fresh workspace with a name and optional description.">
                 <form onSubmit={handleCreateKnowledgeBase} className="space-y-3 text-xs">
                   <label className="block font-semibold text-slate-600 dark:text-slate-300">
@@ -616,7 +623,7 @@ export default function Playground() {
         )}
       </aside>
 
-      <section className="flex flex-1 flex-col overflow-hidden px-4 py-6">
+      <section className="flex flex-1 min-h-0 flex-col overflow-hidden px-4 py-6">
         <header className="rounded-3xl border border-slate-200/60 bg-white/80 px-6 py-4 shadow-sm dark:border-white/10 dark:bg-slate-950/50">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -635,15 +642,15 @@ export default function Playground() {
           </div>
         </header>
 
-        <div className="mt-4 flex flex-1 flex-col gap-4 overflow-hidden">
-          <div className="flex-[1.2] overflow-hidden rounded-3xl border border-slate-200/60 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
+        <div className="mt-4 flex flex-1 min-h-0 flex-col gap-4 overflow-hidden">
+          <div className="flex-[1.2] min-h-0 overflow-hidden rounded-3xl border border-slate-200/60 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
             <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 px-6 py-4 dark:border-white/10">
               <div>
                 <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Knowledge bases</h2>
                 <p className="text-xs text-slate-500 dark:text-slate-300">Select a workspace to view documents and ingest new material.</p>
               </div>
             </div>
-            <div className="h-full overflow-y-auto px-6 py-4">
+            <div className="h-full min-h-0 overflow-y-auto px-6 py-4">
               {loadingList && <p className="text-xs text-slate-500 dark:text-slate-300">Loading knowledge bases…</p>}
               {listError && <p className="text-xs text-red-500 dark:text-red-400">{listError}</p>}
               {!loadingList && !listError && knowledgeBases.length === 0 && (
@@ -685,7 +692,7 @@ export default function Playground() {
             </div>
           </div>
 
-          <div className="flex-[1.4] overflow-hidden rounded-3xl border border-slate-200/60 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
+          <div className="flex-[1.4] min-h-0 overflow-hidden rounded-3xl border border-slate-200/60 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
             <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 px-6 py-4 dark:border-white/10">
               <div>
                 <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Documents</h2>
@@ -694,7 +701,7 @@ export default function Playground() {
                 </p>
               </div>
             </div>
-            <div className="h-full overflow-y-auto px-6 py-4">
+            <div className="h-full min-h-0 overflow-y-auto px-6 py-4">
               {!selectedId && <p className="text-xs text-slate-500 dark:text-slate-300">Choose a knowledge base to view its documents.</p>}
               {selectedId && detailLoading && <p className="text-xs text-slate-500 dark:text-slate-300">Refreshing documents…</p>}
               {selectedId && detailError && <p className="text-xs text-red-500 dark:text-red-400">{detailError}</p>}
@@ -754,29 +761,77 @@ export default function Playground() {
                       {documentLoading && <p>Loading document…</p>}
                       {!documentLoading && documentError && <p className="text-red-500 dark:text-red-400">{documentError}</p>}
                       {!documentLoading && !documentError && documentDetail && (
-                        <div className="space-y-3">
-                          {documentDetail.original_filename && (
-                            <p className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-400">
-                              Source file: {documentDetail.original_filename}
-                            </p>
-                          )}
-                          <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200/60 bg-white/90 p-3 dark:border-white/10 dark:bg-slate-950/50">
+                        documentDetail.file_available && previewUrl ? (
+                          <div className="space-y-3">
+                            {documentDetail.original_filename && (
+                              <p className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-400">
+                                Source file: {documentDetail.original_filename}
+                              </p>
+                            )}
+                            <div className="overflow-hidden rounded-xl border border-slate-200/60 bg-white/90 dark:border-white/10 dark:bg-slate-950/50">
+                              {documentDetail.media_type?.startsWith('image/') ? (
+                                <img
+                                  src={previewUrl}
+                                  alt={documentDetail.title}
+                                  className="h-72 w-full object-contain bg-slate-200 dark:bg-slate-900"
+                                />
+                              ) : (
+                                <iframe
+                                  src={previewUrl}
+                                  title={documentDetail.title}
+                                  className="h-72 w-full bg-white dark:bg-slate-950"
+                                />
+                              )}
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                              <span>{documentDetail.media_type}</span>
+                              <a
+                                href={previewUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="font-semibold text-brand-600 hover:text-brand-500 dark:text-brand-200 dark:hover:text-brand-100"
+                              >
+                                Open original
+                              </a>
+                            </div>
+                            {documentDetail.chunks.length > 0 && (
+                              <details className="rounded-xl border border-slate-200/60 bg-white/80 p-3 dark:border-white/10 dark:bg-slate-900/60">
+                                <summary className="cursor-pointer text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                  View extracted chunks
+                                </summary>
+                                <div className="mt-2 max-h-48 space-y-3 overflow-y-auto">
+                                  {documentDetail.chunks.map((chunk) => (
+                                    <div key={chunk.id} className="rounded-lg bg-slate-100/80 p-3 text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
+                                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                        Chunk {chunk.id.slice(0, 8)}…
+                                      </p>
+                                      <pre className="mt-2 whitespace-pre-wrap text-xs leading-relaxed">{chunk.content}</pre>
+                                    </div>
+                                  ))}
+                                </div>
+                              </details>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
                             {documentDetail.chunks.length === 0 ? (
                               <p className="text-xs text-slate-500 dark:text-slate-300">No chunk data available for this document.</p>
                             ) : (
-                              <ul className="space-y-3">
-                                {documentDetail.chunks.map((chunk) => (
-                                  <li key={chunk.id} className="rounded-lg bg-slate-100/80 p-3 text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                      Chunk {chunk.id.slice(0, 8)}…
-                                    </p>
-                                    <pre className="mt-2 whitespace-pre-wrap text-xs leading-relaxed">{chunk.content}</pre>
-                                  </li>
-                                ))}
-                              </ul>
+                              <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200/60 bg-white/90 p-3 dark:border-white/10 dark:bg-slate-950/50">
+                                <ul className="space-y-3">
+                                  {documentDetail.chunks.map((chunk) => (
+                                    <li key={chunk.id} className="rounded-lg bg-slate-100/80 p-3 text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
+                                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                        Chunk {chunk.id.slice(0, 8)}…
+                                      </p>
+                                      <pre className="mt-2 whitespace-pre-wrap text-xs leading-relaxed">{chunk.content}</pre>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
                             )}
                           </div>
-                        </div>
+                        )
                       )}
                       {!documentLoading && !documentError && !documentDetail && (
                         <p className="text-xs text-slate-500 dark:text-slate-300">Pick a document to preview its chunks.</p>
@@ -814,14 +869,14 @@ export default function Playground() {
             <span className="rotate-90 whitespace-nowrap tracking-widest">Flowknow</span>
           </div>
         ) : (
-          <div className="flex h-full flex-col gap-4 overflow-hidden">
+          <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-300">Ingestion</h2>
               <p className="mt-1 text-xs text-slate-500 leading-relaxed dark:text-slate-300">
                 Add documents, paste transcripts, and upload files to the selected workspace. Configurable chunking keeps retrieval precise.
               </p>
             </div>
-            <div className="flex-1 space-y-4 overflow-y-auto pr-1">
+            <div className="flex-1 min-h-0 space-y-4 overflow-y-auto pr-1">
               <SidebarSection title="Selected workspace" description="Key metrics for the active knowledge base.">
                 {selectedId && detail ? (
                   <ul className="text-xs text-slate-600 leading-relaxed dark:text-slate-300">

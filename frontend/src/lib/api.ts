@@ -9,6 +9,7 @@ export interface KnowledgeDocument {
   chunk_count: number
   created_at: string
   metadata: Record<string, unknown>
+  file_available: boolean
 }
 
 export interface KnowledgeDocumentChunk {
@@ -80,6 +81,10 @@ export function getKnowledgeBase(id: string): Promise<KnowledgeBaseDetail> {
 
 export function getKnowledgeDocument(kbId: string, docId: string): Promise<KnowledgeDocumentDetail> {
   return request(`/knowledge-bases/${kbId}/documents/${docId}`)
+}
+
+export function getKnowledgeDocumentUrl(kbId: string, docId: string): string {
+  return `${API_BASE}/knowledge-bases/${kbId}/documents/${docId}/file`
 }
 
 export function createKnowledgeBase(body: { name: string; description?: string | null }): Promise<KnowledgeBaseDetail> {
