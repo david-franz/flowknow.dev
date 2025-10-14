@@ -7,7 +7,11 @@
 }
 
 body {
-  @apply bg-slate-950 text-slate-100 antialiased min-h-screen;
+  @apply antialiased min-h-screen transition-colors duration-200 bg-slate-50 text-slate-900;
+}
+
+body.dark {
+  @apply bg-slate-950 text-slate-100;
 }
 
 .container-page {

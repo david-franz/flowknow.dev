@@ -15,7 +15,7 @@ export function useDark(): [boolean, () => void] {
   const [dark, setDark] = useState<boolean>(getInitialDark)
 
   useEffect(() => {
-    if (!window) return
+    if (typeof window === 'undefined') return
     document.documentElement.classList.toggle('dark', dark)
     document.body.classList.toggle('dark', dark)
     window.localStorage.setItem(STORAGE_KEY, dark ? 'dark' : 'light')
