@@ -1,23 +1,27 @@
 import { useState } from 'react'
-import { Link, NavLink } from 'react-router-dom'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 import { useDark } from '../lib/useDark'
 
 const navItems = [
-  { to: '/', label: 'Home' },
-  { to: '/docs', label: 'Docs' },
-  { to: '/workbench', label: 'Workbench' },
+  { to: '/', label: 'Home', match: ['/'] },
+  { to: '/playground', label: 'Playground', match: ['/playground', '/workbench'] },
+  { to: '/docs', label: 'Docs', match: ['/docs'] },
 ]
 
 export function Header() {
   const [dark, toggleDark] = useDark()
   const [open, setOpen] = useState(false)
+  const location = useLocation()
 
-  const itemClass = ({ isActive }: { isActive: boolean }) =>
-    `block px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-      isActive
+  const itemClass = (match: string[]) =>
+    ({ isActive }: { isActive: boolean }) => {
+      const active = isActive || match.some((path) => location.pathname.startsWith(path))
+      return `block px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+        active
         ? 'bg-brand-500/10 text-brand-700 dark:bg-white/10 dark:text-white'
         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/60 dark:text-slate-200 dark:hover:text-white dark:hover:bg-white/10'
-    }`
+      }`
+    }
 
   const closeMenu = () => setOpen(false)
 
@@ -30,7 +34,7 @@ export function Header() {
         </Link>
         <nav className="hidden md:flex items-center gap-1 text-sm text-slate-600 dark:text-slate-200">
           {navItems.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.to === '/'} className={itemClass} onClick={closeMenu}>
+            <NavLink key={item.to} to={item.to} end={item.to === '/'} className={itemClass(item.match)} onClick={closeMenu}>
               {item.label}
             </NavLink>
           ))}
@@ -75,7 +79,13 @@ export function Header() {
         <div className="md:hidden border-b border-slate-200/60 bg-white/95 backdrop-blur dark:border-white/10 dark:bg-slate-950/95">
           <nav className="px-4 py-3 flex flex-col gap-1 text-sm text-slate-600 dark:text-slate-200">
             {navItems.map((item) => (
-              <NavLink key={item.to} to={item.to} end={item.to === '/'} className={itemClass} onClick={() => setOpen(false)}>
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === '/'}
+                className={itemClass(item.match)}
+                onClick={() => setOpen(false)}
+              >
                 {item.label}
               </NavLink>
             ))}

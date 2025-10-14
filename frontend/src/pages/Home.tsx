@@ -36,8 +36,8 @@ export default function Home() {
               Flowknow is the knowledge studio for Flowtomic teams. Compose RAG databases from files, datasets, and human-written briefs, then push them straight into Flowport-powered inference gateways.
             </p>
             <div className="flex flex-wrap items-center gap-4">
-              <Link to="/workbench" className="rounded-lg bg-brand-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-brand-400">
-                Launch the workbench
+              <Link to="/playground" className="rounded-lg bg-brand-500 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-brand-400">
+                Open the playground
               </Link>
               <a
                 href="https://flowport.dev"
