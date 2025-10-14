@@ -29,6 +29,9 @@ function useLockedViewport() {
     const previousMainPadding = mainElement?.style.padding ?? ''
     const previousMainHeight = mainElement?.style.height ?? ''
     const previousMainOverflow = mainElement?.style.overflow ?? ''
+    const previousMainDisplay = mainElement?.style.display ?? ''
+    const previousMainFlexDirection = mainElement?.style.flexDirection ?? ''
+    const previousMainAlignItems = mainElement?.style.alignItems ?? ''
 
     const applySizing = () => {
       if (!mainElement) return
@@ -37,6 +40,9 @@ function useLockedViewport() {
       mainElement.style.padding = '0'
       mainElement.style.height = `${window.innerHeight - headerHeight - footerHeight}px`
       mainElement.style.overflow = 'hidden'
+      mainElement.style.display = 'flex'
+      mainElement.style.flexDirection = 'column'
+      mainElement.style.alignItems = 'stretch'
     }
 
     html.style.overflow = 'hidden'
@@ -52,6 +58,9 @@ function useLockedViewport() {
         mainElement.style.padding = previousMainPadding
         mainElement.style.height = previousMainHeight
         mainElement.style.overflow = previousMainOverflow
+        mainElement.style.display = previousMainDisplay
+        mainElement.style.flexDirection = previousMainFlexDirection
+        mainElement.style.alignItems = previousMainAlignItems
       }
     }
   }, [])
