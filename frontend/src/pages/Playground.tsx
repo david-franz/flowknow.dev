@@ -3,17 +3,14 @@ import {
   KnowledgeBaseDetail,
   KnowledgeBaseSummary,
   KnowledgeDocumentDetail,
-  autoBuildKnowledgeBase,
   createKnowledgeBase,
   getKnowledgeBase,
   getKnowledgeDocument,
   getKnowledgeDocumentUrl,
   ingestFile,
-  ingestText,
   listKnowledgeBases,
 } from '../lib/api'
 
-const HF_STORAGE_KEY = 'flowknow:hf-api-key'
 const DEFAULT_CHUNK_SIZE = 750
 const DEFAULT_CHUNK_OVERLAP = 50
 
@@ -60,23 +57,6 @@ function useLockedViewport() {
   }, [])
 }
 
-function useStoredApiKey(): [string, (value: string) => void] {
-  const [key, setKey] = useState<string>(() => {
-    if (typeof window === 'undefined') return ''
-    return window.localStorage.getItem(HF_STORAGE_KEY) ?? ''
-  })
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (key) {
-      window.localStorage.setItem(HF_STORAGE_KEY, key)
-    } else {
-      window.localStorage.removeItem(HF_STORAGE_KEY)
-    }
-  }, [key])
-
-  return [key, setKey]
-}
 
 function SidebarSection({
   title,
@@ -137,18 +117,9 @@ function formatDate(value: string) {
   }
 }
 
-function parseNumber(value: string, fallback: number): number {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return fallback
-  }
-  return parsed
-}
-
 export default function Playground() {
   useLockedViewport()
 
-  const [hfKey, setHfKey] = useStoredApiKey()
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseSummary[]>([])
   const [loadingList, setLoadingList] = useState<boolean>(true)
   const [listError, setListError] = useState<string | null>(null)
@@ -164,22 +135,6 @@ export default function Playground() {
   const [createName, setCreateName] = useState('')
   const [createDescription, setCreateDescription] = useState('')
   const [createStatus, setCreateStatus] = useState<{ text: string; kind: MessageKind } | null>(null)
-
-  const [autoName, setAutoName] = useState('')
-  const [autoDescription, setAutoDescription] = useState('')
-  const [autoEntries, setAutoEntries] = useState('')
-  const [autoChunkSize, setAutoChunkSize] = useState(String(DEFAULT_CHUNK_SIZE))
-  const [autoChunkOverlap, setAutoChunkOverlap] = useState(String(DEFAULT_CHUNK_OVERLAP))
-  const [autoStatus, setAutoStatus] = useState<{ text: string; kind: MessageKind } | null>(null)
-
-  const [textTitle, setTextTitle] = useState('')
-  const [textContent, setTextContent] = useState('')
-  const [textChunkSize, setTextChunkSize] = useState(String(DEFAULT_CHUNK_SIZE))
-  const [textChunkOverlap, setTextChunkOverlap] = useState(String(DEFAULT_CHUNK_OVERLAP))
-  const [textStatus, setTextStatus] = useState<{ text: string; kind: MessageKind } | null>(null)
-
-  const [uploadChunkSize, setUploadChunkSize] = useState(String(DEFAULT_CHUNK_SIZE))
-  const [uploadChunkOverlap, setUploadChunkOverlap] = useState(String(DEFAULT_CHUNK_OVERLAP))
   const [uploadStatus, setUploadStatus] = useState<{ text: string; kind: MessageKind } | null>(null)
   const [uploading, setUploading] = useState(false)
 
@@ -368,86 +323,6 @@ export default function Playground() {
     }
   }
 
-  const handleAutoBuild = async (event: FormEvent) => {
-    event.preventDefault()
-    const trimmedName = autoName.trim()
-    const trimmedEntries = autoEntries.trim()
-    if (!trimmedName || !trimmedEntries) {
-      setAutoStatus({ text: 'Provide a name and at least one entry', kind: 'error' })
-      return
-    }
-
-    const chunkSize = parseNumber(autoChunkSize, DEFAULT_CHUNK_SIZE)
-    const chunkOverlap = parseNumber(autoChunkOverlap, DEFAULT_CHUNK_OVERLAP)
-    const blocks = trimmedEntries.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean)
-    if (blocks.length === 0) {
-      setAutoStatus({ text: 'Unable to parse knowledge entries', kind: 'error' })
-      return
-    }
-
-    const knowledgeItems = blocks.map((block) => {
-      const [firstLine, ...rest] = block.split('\n')
-      const title = (firstLine ?? 'Entry').trim() || 'Entry'
-      const content = rest.join('\n').trim() || title
-      return {
-        title,
-        content,
-        chunk_size: chunkSize,
-        chunk_overlap: chunkOverlap,
-      }
-    })
-
-    setAutoStatus({ text: 'Building knowledge base…', kind: 'neutral' })
-    try {
-      const created = await autoBuildKnowledgeBase({
-        name: trimmedName,
-        description: autoDescription.trim() || undefined,
-        knowledge_items: knowledgeItems,
-        chunk_size: chunkSize,
-        chunk_overlap: chunkOverlap,
-      })
-      setAutoStatus({ text: 'Knowledge base generated successfully', kind: 'success' })
-      setAutoName('')
-      setAutoDescription('')
-      setAutoEntries('')
-      await refreshKnowledgeBases(created.id)
-    } catch (error) {
-      setAutoStatus({ text: error instanceof Error ? error.message : 'Unable to auto-build knowledge base', kind: 'error' })
-    }
-  }
-
-  const handleTextIngestion = async (event: FormEvent) => {
-    event.preventDefault()
-    if (!selectedId) {
-      setTextStatus({ text: 'Select a knowledge base before ingesting text', kind: 'error' })
-      return
-    }
-    const content = textContent.trim()
-    if (!content) {
-      setTextStatus({ text: 'Content is required', kind: 'error' })
-      return
-    }
-
-    const chunkSize = parseNumber(textChunkSize, DEFAULT_CHUNK_SIZE)
-    const chunkOverlap = parseNumber(textChunkOverlap, DEFAULT_CHUNK_OVERLAP)
-    setTextStatus({ text: 'Ingesting text…', kind: 'neutral' })
-    try {
-      await ingestText(selectedId, {
-        title: textTitle.trim() || 'Untitled',
-        content,
-        chunk_size: chunkSize,
-        chunk_overlap: chunkOverlap,
-      })
-      setTextStatus({ text: 'Text ingested successfully', kind: 'success' })
-      setTextTitle('')
-      setTextContent('')
-      await refreshKnowledgeBases(selectedId)
-      await getKnowledgeBase(selectedId).then(setDetail).catch(() => undefined)
-    } catch (error) {
-      setTextStatus({ text: error instanceof Error ? error.message : 'Unable to ingest text', kind: 'error' })
-    }
-  }
-
   const handleFileSelection = async (event: ChangeEvent<HTMLInputElement>) => {
     if (!selectedId) {
       setUploadStatus({ text: 'Select a knowledge base before uploading files', kind: 'error' })
@@ -459,23 +334,29 @@ export default function Playground() {
     if (!files || files.length === 0) {
       return
     }
-    const file = files[0]
-    const chunkSize = parseNumber(uploadChunkSize, DEFAULT_CHUNK_SIZE)
-    const chunkOverlap = parseNumber(uploadChunkOverlap, DEFAULT_CHUNK_OVERLAP)
+    const fileList = Array.from(files)
 
     setUploading(true)
-    setUploadStatus({ text: `Uploading ${file.name}…`, kind: 'neutral' })
+    setUploadStatus({
+      text: `Uploading ${fileList.length} file${fileList.length === 1 ? '' : 's'}…`,
+      kind: 'neutral',
+    })
+
     try {
-      await ingestFile(selectedId, file, {
-        chunk_size: chunkSize,
-        chunk_overlap: chunkOverlap,
-        hf_api_key: hfKey || undefined,
+      for (const file of fileList) {
+        await ingestFile(selectedId, file, {
+          chunk_size: DEFAULT_CHUNK_SIZE,
+          chunk_overlap: DEFAULT_CHUNK_OVERLAP,
+        })
+      }
+      setUploadStatus({
+        text: `Uploaded ${fileList.length} file${fileList.length === 1 ? '' : 's'}. Vector database refreshed.`,
+        kind: 'success',
       })
-      setUploadStatus({ text: `${file.name} ingested successfully`, kind: 'success' })
       await refreshKnowledgeBases(selectedId)
       await getKnowledgeBase(selectedId).then(setDetail).catch(() => undefined)
     } catch (error) {
-      setUploadStatus({ text: error instanceof Error ? error.message : 'Unable to upload file', kind: 'error' })
+      setUploadStatus({ text: error instanceof Error ? error.message : 'Unable to upload files', kind: 'error' })
     } finally {
       setUploading(false)
       event.target.value = ''
@@ -485,13 +366,13 @@ export default function Playground() {
   return (
     <div className="flex h-full w-full overflow-hidden bg-slate-100/70 text-slate-900 transition dark:bg-slate-950 dark:text-white">
       <aside
-        className={`relative hidden h-full flex-none overflow-hidden border-r border-slate-200/60 bg-white/70 p-4 transition-all duration-300 dark:border-white/10 dark:bg-slate-950/60 xl:flex xl:flex-col ${leftCollapsed ? 'w-16' : 'w-[22rem]'}`}
+        className={`relative hidden h-full min-h-0 flex-none overflow-hidden border-r border-slate-200/60 bg-white/70 p-4 transition-all duration-300 dark:border-white/10 dark:bg-slate-950/60 xl:flex xl:flex-col ${leftCollapsed ? 'w-16' : 'w-[22rem]'}`}
       >
         <button
           type="button"
           onClick={() => setLeftCollapsed((value) => !value)}
           className="absolute -right-3 top-6 flex h-7 w-7 items-center justify-center rounded-full border border-slate-300/80 bg-white text-slate-500 shadow-sm transition hover:bg-slate-100 dark:border-white/20 dark:bg-slate-900 dark:text-slate-200"
-          aria-label={leftCollapsed ? 'Expand creation panel' : 'Collapse creation panel'}
+          aria-label={leftCollapsed ? 'Expand workspaces panel' : 'Collapse workspaces panel'}
         >
           <svg className={`h-3.5 w-3.5 transition-transform ${leftCollapsed ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
             <path
@@ -504,7 +385,7 @@ export default function Playground() {
 
         {leftCollapsed ? (
           <div className="flex h-full flex-col items-center justify-between py-8 text-xs text-slate-500 dark:text-slate-300">
-            <span className="rotate-90 whitespace-nowrap tracking-widest">Builder</span>
+            <span className="rotate-90 whitespace-nowrap tracking-widest">Workspaces</span>
             <span className="rotate-90 whitespace-nowrap tracking-widest">Flowknow</span>
           </div>
         ) : (
@@ -512,11 +393,51 @@ export default function Playground() {
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-300">Playground</h2>
               <p className="mt-1 text-xs text-slate-500 leading-relaxed dark:text-slate-300">
-                Create and generate knowledge bases that power Flowport retrieval. Configure chunking and structure before ingesting content.
+                Browse Flowknow knowledge bases, create new workspaces, and keep default Flowport and Flowknow packs handy for testing.
               </p>
             </div>
             <div className="flex-1 min-h-0 space-y-4 overflow-y-auto pr-1">
-              <SidebarSection title="Create knowledge base" description="Set up a fresh workspace with a name and optional description.">
+              <SidebarSection
+                title="Knowledge bases"
+                description="Select a workspace to browse documents."
+              >
+                <div className="space-y-3 text-xs">
+                  {loadingList && <p className="text-slate-500 dark:text-slate-300">Loading knowledge bases…</p>}
+                  {listError && <p className="text-red-500 dark:text-red-400">{listError}</p>}
+                  {!loadingList && !listError && knowledgeBases.length === 0 && (
+                    <p className="text-slate-500 dark:text-slate-300">No knowledge bases yet. Create one below.</p>
+                  )}
+                  <ul className="space-y-2">
+                    {knowledgeBases.map((kb) => {
+                      const selected = kb.id === selectedId
+                      return (
+                        <li key={kb.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedId(kb.id)
+                              setSelectedDocumentId(null)
+                            }}
+                            className={`flex w-full flex-col gap-2 rounded-xl border px-3 py-3 text-left text-xs shadow-sm transition ${
+                              selected
+                                ? 'border-brand-400 bg-brand-500/10 text-brand-800 dark:border-brand-200/40 dark:bg-brand-300/10 dark:text-brand-50'
+                                : 'border-slate-200/60 bg-white/70 text-slate-600 hover:border-brand-300 hover:text-brand-700 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-200'
+                            }`}
+                          >
+                            <span className="text-sm font-semibold text-slate-900 dark:text-white">{kb.name}</span>
+                            {kb.description && <span className="text-[11px] text-slate-500 dark:text-slate-300">{kb.description}</span>}
+                            <span className="text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                              {kb.document_count} docs • {kb.chunk_count} chunks {kb.ready ? '' : '• rebuilding'}
+                            </span>
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              </SidebarSection>
+
+              <SidebarSection title="Create knowledge base" description="Set up a new workspace with a name and optional description.">
                 <form onSubmit={handleCreateKnowledgeBase} className="space-y-3 text-xs">
                   <label className="block font-semibold text-slate-600 dark:text-slate-300">
                     Name
@@ -524,7 +445,7 @@ export default function Playground() {
                       type="text"
                       value={createName}
                       onChange={(event) => setCreateName(event.target.value)}
-                      placeholder="Support knowledge base"
+                      placeholder="Support library"
                       className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
                     />
                   </label>
@@ -547,83 +468,12 @@ export default function Playground() {
                   <StatusMessage message={createStatus?.text ?? null} kind={createStatus?.kind ?? 'neutral'} />
                 </form>
               </SidebarSection>
-
-              <SidebarSection
-                title="Auto-build from notes"
-                description="Paste structured entries separated by blank lines to generate a knowledge base automatically."
-              >
-                <form onSubmit={handleAutoBuild} className="space-y-3 text-xs">
-                  <label className="block font-semibold text-slate-600 dark:text-slate-300">
-                    Name
-                    <input
-                      type="text"
-                      value={autoName}
-                      onChange={(event) => setAutoName(event.target.value)}
-                      placeholder="Onboarding guide"
-                      className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                    />
-                  </label>
-                  <label className="block font-semibold text-slate-600 dark:text-slate-300">
-                    Description
-                    <input
-                      type="text"
-                      value={autoDescription}
-                      onChange={(event) => setAutoDescription(event.target.value)}
-                      placeholder="Optional description"
-                      className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                    />
-                  </label>
-                  <label className="block font-semibold text-slate-600 dark:text-slate-300">
-                    Knowledge entries
-                    <textarea
-                      value={autoEntries}
-                      onChange={(event) => setAutoEntries(event.target.value)}
-                      rows={6}
-                      placeholder={`Title one\nBody text...\n\nTitle two\nMore details...`}
-                      className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                    />
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="block font-semibold text-slate-600 dark:text-slate-300">
-                      Chunk size
-                      <input
-                        type="number"
-                        min={100}
-                        max={4000}
-                        step={50}
-                        value={autoChunkSize}
-                        onChange={(event) => setAutoChunkSize(event.target.value)}
-                        className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                      />
-                    </label>
-                    <label className="block font-semibold text-slate-600 dark:text-slate-300">
-                      Overlap
-                      <input
-                        type="number"
-                        min={0}
-                        max={500}
-                        step={10}
-                        value={autoChunkOverlap}
-                        onChange={(event) => setAutoChunkOverlap(event.target.value)}
-                        className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                      />
-                    </label>
-                  </div>
-                  <button
-                    type="submit"
-                    className="w-full rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-sm transition hover:bg-brand-400"
-                  >
-                    Generate workspace
-                  </button>
-                  <StatusMessage message={autoStatus?.text ?? null} kind={autoStatus?.kind ?? 'neutral'} />
-                </form>
-              </SidebarSection>
             </div>
           </div>
         )}
       </aside>
 
-      <section className="flex flex-1 min-h-0 flex-col overflow-hidden px-4 py-6">
+      <section className="flex flex-1 min-h-0 flex-col gap-4 overflow-hidden px-4 py-6">
         <header className="rounded-3xl border border-slate-200/60 bg-white/80 px-6 py-4 shadow-sm dark:border-white/10 dark:bg-slate-950/50">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -642,203 +492,155 @@ export default function Playground() {
           </div>
         </header>
 
-        <div className="mt-4 flex flex-1 min-h-0 flex-col gap-4 overflow-hidden">
-          <div className="flex-[1.2] min-h-0 overflow-hidden rounded-3xl border border-slate-200/60 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 px-6 py-4 dark:border-white/10">
-              <div>
-                <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Knowledge bases</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-300">Select a workspace to view documents and ingest new material.</p>
-              </div>
+        <div className="flex flex-1 min-h-0 gap-4 overflow-hidden">
+          <div className="flex w-72 flex-col overflow-hidden rounded-3xl border border-slate-200/60 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
+            <div className="border-b border-slate-200/60 px-5 py-4 dark:border-white/10">
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Documents</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-300">
+                {selectedId
+                  ? 'Select a document to preview it and inspect extracted chunks.'
+                  : 'Choose a knowledge base to browse its documents.'}
+              </p>
             </div>
-            <div className="h-full min-h-0 overflow-y-auto px-6 py-4">
-              {loadingList && <p className="text-xs text-slate-500 dark:text-slate-300">Loading knowledge bases…</p>}
-              {listError && <p className="text-xs text-red-500 dark:text-red-400">{listError}</p>}
-              {!loadingList && !listError && knowledgeBases.length === 0 && (
-                <p className="text-xs text-slate-500 dark:text-slate-300">No knowledge bases yet—create one using the forms on the left.</p>
-              )}
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                {knowledgeBases.map((kb) => {
-                  const selected = kb.id === selectedId
-                  return (
-                    <button
-                      key={kb.id}
-                      type="button"
-                          onClick={() => {
-                            setSelectedId(kb.id)
-                            setSelectedDocumentId(null)
-                          }}
-                      className={`flex flex-col gap-2 rounded-2xl border px-4 py-3 text-left text-sm transition shadow-sm ${
-                        selected
-                          ? 'border-brand-400 bg-brand-100/60 text-brand-800 dark:border-brand-200/40 dark:bg-brand-300/10 dark:text-brand-50'
-                          : 'border-slate-200/60 bg-white/80 text-slate-700 hover:border-brand-300 hover:text-brand-700 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between text-xs uppercase tracking-wide text-slate-400 dark:text-slate-400">
-                        <span>{kb.source === 'prebuilt' ? 'Prebuilt' : 'User'}</span>
-                        <span>{selected ? 'Selected' : kb.ready ? 'Ready' : 'Rebuilding'}</span>
-                      </div>
-                      <h3 className="text-base font-semibold text-slate-900 dark:text-white">{kb.name}</h3>
-                      {kb.description && <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-300">{kb.description}</p>}
-                      <p className="text-xs text-slate-400 dark:text-slate-400">
-                        {kb.document_count} documents • {kb.chunk_count} chunks
-                      </p>
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                        Updated {formatDate(kb.updated_at)}
-                      </p>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-[1.4] min-h-0 overflow-hidden rounded-3xl border border-slate-200/60 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 px-6 py-4 dark:border-white/10">
-              <div>
-                <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Documents</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-300">
-                  {selectedId ? 'Review ingested documents for the selected workspace.' : 'Select a knowledge base to inspect documents.'}
-                </p>
-              </div>
-            </div>
-            <div className="h-full min-h-0 overflow-y-auto px-6 py-4">
-              {!selectedId && <p className="text-xs text-slate-500 dark:text-slate-300">Choose a knowledge base to view its documents.</p>}
+            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+              {!selectedId && <p className="text-xs text-slate-500 dark:text-slate-300">No workspace selected yet.</p>}
               {selectedId && detailLoading && <p className="text-xs text-slate-500 dark:text-slate-300">Refreshing documents…</p>}
               {selectedId && detailError && <p className="text-xs text-red-500 dark:text-red-400">{detailError}</p>}
               {selectedId && detail && !detailLoading && !detailError && detail.documents.length === 0 && (
-                <p className="text-xs text-slate-500 dark:text-slate-300">No documents yet—use the ingestion tools on the right.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-300">No documents uploaded yet. Use the upload tools on the right.</p>
               )}
               {selectedId && detail && detail.documents.length > 0 && (
-                <>
-                  <ul className="space-y-3 text-xs">
-                    {detail.documents.map((doc) => {
-                      const active = doc.id === selectedDocumentId
-                      return (
-                        <li key={doc.id}>
-                          <button
-                            type="button"
-                            onClick={() => handleDocumentSelect(doc.id)}
-                            className={`w-full rounded-2xl border px-4 py-3 text-left shadow-sm transition ${
-                              active
-                                ? 'border-brand-400 bg-brand-100/50 text-brand-800 dark:border-brand-200/40 dark:bg-brand-300/10 dark:text-brand-50'
-                                : 'border-slate-200/60 bg-white/80 text-slate-700 hover:border-brand-300 hover:text-brand-700 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-200'
-                            }`}
-                          >
-                            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                              <div>
-                                <p className="text-sm font-semibold text-slate-900 dark:text-white">{doc.title}</p>
-                                {doc.original_filename && (
-                                  <p className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-400">
-                                    {doc.original_filename}
-                                  </p>
-                                )}
-                              </div>
-                              <span className="text-[11px] text-slate-500 dark:text-slate-300">
-                                {doc.chunk_count} chunks • {(doc.size_bytes / 1024).toFixed(1)} KB
+                <ul className="space-y-3 text-xs">
+                  {detail.documents.map((doc) => {
+                    const active = doc.id === selectedDocumentId
+                    return (
+                      <li key={doc.id}>
+                        <button
+                          type="button"
+                          onClick={() => handleDocumentSelect(doc.id)}
+                          className={`w-full rounded-2xl border px-4 py-3 text-left shadow-sm transition ${
+                            active
+                              ? 'border-brand-400 bg-brand-100/50 text-brand-800 dark:border-brand-200/40 dark:bg-brand-300/10 dark:text-brand-50'
+                              : 'border-slate-200/60 bg-white/80 text-slate-700 hover:border-brand-300 hover:text-brand-700 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-200'
+                          }`}
+                        >
+                          <div className="flex flex-col gap-1">
+                            <span className="text-sm font-semibold text-slate-900 dark:text-white">{doc.title}</span>
+                            {doc.original_filename && (
+                              <span className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-400">
+                                {doc.original_filename}
                               </span>
-                            </div>
-                          </button>
-                        </li>
-                      )
-                    })}
-                  </ul>
+                            )}
+                            <span className="text-[11px] text-slate-500 dark:text-slate-300">
+                              {doc.chunk_count} chunks • {(doc.size_bytes / 1024).toFixed(1)} KB
+                            </span>
+                          </div>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
 
-                  <div className="mt-4 rounded-2xl border border-slate-200/60 bg-white/80 p-4 shadow-sm dark:border-white/10 dark:bg-slate-900/60">
-                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Document preview</h3>
-                        <p className="text-xs text-slate-500 dark:text-slate-300">
-                          {documentDetail ? documentDetail.title : 'Select a document to browse its chunks.'}
-                        </p>
-                      </div>
-                      {documentDetail && (
-                        <span className="text-[11px] text-slate-500 dark:text-slate-300">
-                          {documentDetail.chunk_count} chunks
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-3 text-xs text-slate-600 dark:text-slate-300">
-                      {documentLoading && <p>Loading document…</p>}
-                      {!documentLoading && documentError && <p className="text-red-500 dark:text-red-400">{documentError}</p>}
-                      {!documentLoading && !documentError && documentDetail && (
-                        documentDetail.file_available && previewUrl ? (
-                          <div className="space-y-3">
-                            {documentDetail.original_filename && (
-                              <p className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-400">
-                                Source file: {documentDetail.original_filename}
-                              </p>
-                            )}
-                            <div className="overflow-hidden rounded-xl border border-slate-200/60 bg-white/90 dark:border-white/10 dark:bg-slate-950/50">
-                              {documentDetail.media_type?.startsWith('image/') ? (
-                                <img
-                                  src={previewUrl}
-                                  alt={documentDetail.title}
-                                  className="h-72 w-full object-contain bg-slate-200 dark:bg-slate-900"
-                                />
-                              ) : (
-                                <iframe
-                                  src={previewUrl}
-                                  title={documentDetail.title}
-                                  className="h-72 w-full bg-white dark:bg-slate-950"
-                                />
-                              )}
-                            </div>
-                            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                              <span>{documentDetail.media_type}</span>
-                              <a
-                                href={previewUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="font-semibold text-brand-600 hover:text-brand-500 dark:text-brand-200 dark:hover:text-brand-100"
-                              >
-                                Open original
-                              </a>
-                            </div>
-                            {documentDetail.chunks.length > 0 && (
-                              <details className="rounded-xl border border-slate-200/60 bg-white/80 p-3 dark:border-white/10 dark:bg-slate-900/60">
-                                <summary className="cursor-pointer text-xs font-semibold text-slate-600 dark:text-slate-300">
-                                  View extracted chunks
-                                </summary>
-                                <div className="mt-2 max-h-48 space-y-3 overflow-y-auto">
-                                  {documentDetail.chunks.map((chunk) => (
-                                    <div key={chunk.id} className="rounded-lg bg-slate-100/80 p-3 text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
-                                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                        Chunk {chunk.id.slice(0, 8)}…
-                                      </p>
-                                      <pre className="mt-2 whitespace-pre-wrap text-xs leading-relaxed">{chunk.content}</pre>
-                                    </div>
-                                  ))}
-                                </div>
-                              </details>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="space-y-3">
-                            {documentDetail.chunks.length === 0 ? (
-                              <p className="text-xs text-slate-500 dark:text-slate-300">No chunk data available for this document.</p>
-                            ) : (
-                              <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200/60 bg-white/90 p-3 dark:border-white/10 dark:bg-slate-950/50">
-                                <ul className="space-y-3">
-                                  {documentDetail.chunks.map((chunk) => (
-                                    <li key={chunk.id} className="rounded-lg bg-slate-100/80 p-3 text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
-                                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                        Chunk {chunk.id.slice(0, 8)}…
-                                      </p>
-                                      <pre className="mt-2 whitespace-pre-wrap text-xs leading-relaxed">{chunk.content}</pre>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      )}
-                      {!documentLoading && !documentError && !documentDetail && (
-                        <p className="text-xs text-slate-500 dark:text-slate-300">Pick a document to preview its chunks.</p>
-                      )}
-                    </div>
+          <div className="flex flex-1 min-h-0 flex-col overflow-hidden rounded-3xl border border-slate-200/60 bg-white/90 shadow-sm dark:border-white/10 dark:bg-slate-950/60">
+            <div className="border-b border-slate-200/60 px-6 py-4 dark:border-white/10">
+              {detail && selectedId ? (
+                <div className="flex flex-col gap-1 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-slate-900 dark:text-white">{detail.name}</h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-300">
+                      {detail.description || 'Browse documents and preview extracted content.'}
+                    </p>
                   </div>
-                </>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-300">
+                    {detail.document_count} docs • {detail.chunk_count} chunks
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Document preview</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-300">Select a knowledge base to start exploring its files.</p>
+                </div>
+              )}
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 text-xs text-slate-600 dark:text-slate-300">
+              {!selectedId && <p>Choose a workspace on the left to inspect its contents.</p>}
+              {selectedId && documentLoading && <p>Loading document…</p>}
+              {selectedId && !documentLoading && documentError && (
+                <p className="text-red-500 dark:text-red-400">{documentError}</p>
+              )}
+              {selectedId && !documentLoading && !documentError && documentDetail && (
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-900 dark:text-white">{documentDetail.title}</h3>
+                      {documentDetail.original_filename && (
+                        <p className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-400">
+                          {documentDetail.original_filename}
+                        </p>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-300">
+                      {documentDetail.chunk_count} chunks • Created {formatDate(documentDetail.created_at)}
+                    </span>
+                  </div>
+                  {documentDetail.file_available && previewUrl ? (
+                    <div className="space-y-3">
+                      <div className="overflow-hidden rounded-xl border border-slate-200/60 bg-white/90 dark:border-white/10 dark:bg-slate-950/50">
+                        {documentDetail.media_type?.startsWith('image/') ? (
+                          <img
+                            src={previewUrl}
+                            alt={documentDetail.title}
+                            className="h-80 w-full object-contain bg-slate-200 dark:bg-slate-900"
+                          />
+                        ) : (
+                          <iframe
+                            src={previewUrl}
+                            title={documentDetail.title}
+                            className="h-80 w-full bg-white dark:bg-slate-950"
+                          />
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                        <span>{documentDetail.media_type}</span>
+                        <a
+                          href={previewUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-semibold text-brand-600 hover:text-brand-500 dark:text-brand-200 dark:hover:text-brand-100"
+                        >
+                          Open original
+                        </a>
+                      </div>
+                    </div>
+                  ) : null}
+                  {documentDetail.chunks.length > 0 ? (
+                    <div className="space-y-3">
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                        Extracted chunks
+                      </h4>
+                      <div className="max-h-64 space-y-3 overflow-y-auto pr-1">
+                        {documentDetail.chunks.map((chunk) => (
+                          <article key={chunk.id} className="rounded-xl border border-slate-200/60 bg-slate-100/70 p-3 shadow-sm dark:border-white/10 dark:bg-slate-900/60">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                              Chunk {chunk.id.slice(0, 8)}…
+                            </p>
+                            <pre className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-700 dark:text-slate-200">
+                              {chunk.content}
+                            </pre>
+                          </article>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 dark:text-slate-300">No chunk data is available for this document yet.</p>
+                  )}
+                </div>
+              )}
+              {selectedId && !documentLoading && !documentError && !documentDetail && detail && detail.documents.length > 0 && (
+                <p>Select a document from the list to preview its content.</p>
               )}
             </div>
           </div>
@@ -846,13 +648,13 @@ export default function Playground() {
       </section>
 
       <aside
-        className={`relative hidden h-full flex-none overflow-hidden border-l border-slate-200/60 bg-white/70 p-4 transition-all duration-300 dark:border-white/10 dark:bg-slate-950/60 xl:flex xl:flex-col ${rightCollapsed ? 'w-16' : 'w-[22rem]'}`}
+        className={`relative hidden h-full min-h-0 flex-none overflow-hidden border-l border-slate-200/60 bg-white/70 p-4 transition-all duration-300 dark:border-white/10 dark:bg-slate-950/60 xl:flex xl:flex-col ${rightCollapsed ? 'w-16' : 'w-[22rem]'}`}
       >
         <button
           type="button"
           onClick={() => setRightCollapsed((value) => !value)}
           className="absolute -left-3 top-6 flex h-7 w-7 items-center justify-center rounded-full border border-slate-300/80 bg-white text-slate-500 shadow-sm transition hover:bg-slate-100 dark:border-white/20 dark:bg-slate-900 dark:text-slate-200"
-          aria-label={rightCollapsed ? 'Expand ingestion panel' : 'Collapse ingestion panel'}
+          aria-label={rightCollapsed ? 'Expand upload panel' : 'Collapse upload panel'}
         >
           <svg className={`h-3.5 w-3.5 transition-transform ${rightCollapsed ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
             <path
@@ -865,15 +667,15 @@ export default function Playground() {
 
         {rightCollapsed ? (
           <div className="flex h-full flex-col items-center justify-between py-8 text-xs text-slate-500 dark:text-slate-300">
-            <span className="rotate-90 whitespace-nowrap tracking-widest">Ingest</span>
+            <span className="rotate-90 whitespace-nowrap tracking-widest">Uploads</span>
             <span className="rotate-90 whitespace-nowrap tracking-widest">Flowknow</span>
           </div>
         ) : (
           <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
             <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-300">Ingestion</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-300">Upload files</h2>
               <p className="mt-1 text-xs text-slate-500 leading-relaxed dark:text-slate-300">
-                Add documents, paste transcripts, and upload files to the selected workspace. Configurable chunking keeps retrieval precise.
+                Drop in documents to automatically build a RAG-ready vector database for the selected workspace. Side panels scroll while the playground stays fixed.
               </p>
             </div>
             <div className="flex-1 min-h-0 space-y-4 overflow-y-auto pr-1">
@@ -903,115 +705,21 @@ export default function Playground() {
                 )}
               </SidebarSection>
 
-              <SidebarSection title="Hugging Face key" description="Optional key used for image captioning during file uploads.">
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300">
-                  Hugging Face API key
-                  <input
-                    type="password"
-                    value={hfKey}
-                    onChange={(event) => setHfKey(event.target.value)}
-                    placeholder="hf_xxxxx"
-                    className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                  />
-                </label>
-                <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-400">Stored locally in your browser.</p>
-              </SidebarSection>
-
-              <SidebarSection title="Ingest text" description="Paste free-form content. Ideal for transcripts, FAQs, and SOPs.">
-                <form onSubmit={handleTextIngestion} className="space-y-3 text-xs">
-                  <label className="block font-semibold text-slate-600 dark:text-slate-300">
-                    Title
-                    <input
-                      type="text"
-                      value={textTitle}
-                      onChange={(event) => setTextTitle(event.target.value)}
-                      placeholder="Content title"
-                      className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                    />
-                  </label>
-                  <label className="block font-semibold text-slate-600 dark:text-slate-300">
-                    Content
-                    <textarea
-                      value={textContent}
-                      onChange={(event) => setTextContent(event.target.value)}
-                      rows={5}
-                      placeholder="Paste relevant text, transcripts, or instructions…"
-                      className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                    />
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="block font-semibold text-slate-600 dark:text-slate-300">
-                      Chunk size
-                      <input
-                        type="number"
-                        min={100}
-                        max={4000}
-                        step={50}
-                        value={textChunkSize}
-                        onChange={(event) => setTextChunkSize(event.target.value)}
-                        className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                      />
-                    </label>
-                    <label className="block font-semibold text-slate-600 dark:text-slate-300">
-                      Overlap
-                      <input
-                        type="number"
-                        min={0}
-                        max={500}
-                        step={10}
-                        value={textChunkOverlap}
-                        onChange={(event) => setTextChunkOverlap(event.target.value)}
-                        className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                      />
-                    </label>
-                  </div>
-                  <button
-                    type="submit"
-                    className="w-full rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-slate-950 shadow-sm transition hover:bg-brand-400"
-                  >
-                    Ingest text
-                  </button>
-                  <StatusMessage message={textStatus?.text ?? null} kind={textStatus?.kind ?? 'neutral'} />
-                </form>
-              </SidebarSection>
-
-              <SidebarSection title="Upload file" description="Attach PDFs, spreadsheets, or images. Images use Hugging Face for captioning.">
+              <SidebarSection
+                title="Upload documents"
+                description="Attach PDFs, spreadsheets, presentations, or images. Each file is vectorised automatically."
+              >
                 <form className="space-y-3 text-xs" onSubmit={(event) => event.preventDefault()}>
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="block font-semibold text-slate-600 dark:text-slate-300">
-                      Chunk size
-                      <input
-                        type="number"
-                        min={100}
-                        max={4000}
-                        step={50}
-                        value={uploadChunkSize}
-                        onChange={(event) => setUploadChunkSize(event.target.value)}
-                        className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                      />
-                    </label>
-                    <label className="block font-semibold text-slate-600 dark:text-slate-300">
-                      Overlap
-                      <input
-                        type="number"
-                        min={0}
-                        max={500}
-                        step={10}
-                        value={uploadChunkOverlap}
-                        onChange={(event) => setUploadChunkOverlap(event.target.value)}
-                        className="mt-1 w-full rounded-lg border border-slate-200/60 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200/60 dark:border-white/10 dark:bg-slate-900/80 dark:text-white"
-                      />
-                    </label>
-                  </div>
                   <input
                     type="file"
-                    accept=".txt,.md,.csv,.pdf,.png,.jpg,.jpeg"
+                    accept=".txt,.md,.csv,.pdf,.png,.jpg,.jpeg,.pptx,.docx"
                     onChange={handleFileSelection}
+                    multiple
                     disabled={uploading}
                     className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-slate-950 hover:file:bg-brand-400 disabled:file:opacity-60 dark:text-slate-300"
                   />
                   <p className="text-[11px] text-slate-400 dark:text-slate-400">
-                    Supports TXT, Markdown, CSV, PDF, PNG, and JPEG. Provide a Hugging Face key for automatic image captioning.
+                    Add one or many files at once—the RAG database refreshes automatically so Flowport models can start chatting immediately.
                   </p>
                   <StatusMessage message={uploadStatus?.text ?? null} kind={uploadStatus?.kind ?? 'neutral'} />
                 </form>
