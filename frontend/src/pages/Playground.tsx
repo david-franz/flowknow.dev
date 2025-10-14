@@ -2,9 +2,11 @@ import { ChangeEvent, FormEvent, ReactNode, useEffect, useMemo, useState } from 
 import {
   KnowledgeBaseDetail,
   KnowledgeBaseSummary,
+  KnowledgeDocumentDetail,
   autoBuildKnowledgeBase,
   createKnowledgeBase,
   getKnowledgeBase,
+  getKnowledgeDocument,
   ingestFile,
   ingestText,
   listKnowledgeBases,
@@ -153,6 +155,10 @@ export default function Playground() {
   const [detail, setDetail] = useState<KnowledgeBaseDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState<boolean>(false)
   const [detailError, setDetailError] = useState<string | null>(null)
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null)
+  const [documentDetail, setDocumentDetail] = useState<KnowledgeDocumentDetail | null>(null)
+  const [documentLoading, setDocumentLoading] = useState<boolean>(false)
+  const [documentError, setDocumentError] = useState<string | null>(null)
 
   const [createName, setCreateName] = useState('')
   const [createDescription, setCreateDescription] = useState('')
@@ -218,10 +224,19 @@ export default function Playground() {
     if (!selectedId) {
       setDetail(null)
       setDetailError(null)
+      setSelectedDocumentId(null)
+      setDocumentDetail(null)
+      setDocumentError(null)
+      setDocumentLoading(false)
       return
     }
 
     let ignore = false
+
+    setSelectedDocumentId(null)
+    setDocumentDetail(null)
+    setDocumentError(null)
+    setDocumentLoading(false)
 
     async function fetchDetail() {
       setDetailLoading(true)
@@ -249,6 +264,52 @@ export default function Playground() {
     }
   }, [selectedId])
 
+  useEffect(() => {
+    if (!selectedId || !selectedDocumentId) {
+      return
+    }
+
+    let ignore = false
+
+    async function fetchDocument() {
+      setDocumentLoading(true)
+      setDocumentError(null)
+      try {
+        const data = await getKnowledgeDocument(selectedId, selectedDocumentId)
+        if (!ignore) {
+          setDocumentDetail(data)
+        }
+      } catch (error) {
+        if (!ignore) {
+          setDocumentError(error instanceof Error ? error.message : 'Unable to load document')
+        }
+      } finally {
+        if (!ignore) {
+          setDocumentLoading(false)
+        }
+      }
+    }
+
+    fetchDocument()
+
+    return () => {
+      ignore = true
+    }
+  }, [selectedId, selectedDocumentId])
+
+  useEffect(() => {
+    if (!detail || detail.documents.length === 0) {
+      return
+    }
+
+    setSelectedDocumentId((previous) => {
+      if (previous && detail.documents.some((doc) => doc.id === previous)) {
+        return previous
+      }
+      return detail.documents[0].id
+    })
+  }, [detail])
+
   const totalDocuments = useMemo(() => knowledgeBases.reduce((acc, kb) => acc + kb.document_count, 0), [knowledgeBases])
   const totalChunks = useMemo(() => knowledgeBases.reduce((acc, kb) => acc + kb.chunk_count, 0), [knowledgeBases])
 
@@ -268,6 +329,16 @@ export default function Playground() {
     } finally {
       setLoadingList(false)
     }
+  }
+
+  const handleDocumentSelect = (docId: string) => {
+    if (!selectedId) {
+      return
+    }
+    setSelectedDocumentId(docId)
+    setDocumentLoading(true)
+    setDocumentDetail(null)
+    setDocumentError(null)
   }
 
   const handleCreateKnowledgeBase = async (event: FormEvent) => {
@@ -407,7 +478,7 @@ export default function Playground() {
   return (
     <div className="flex h-full w-full overflow-hidden bg-slate-100/70 text-slate-900 transition dark:bg-slate-950 dark:text-white">
       <aside
-        className={`relative hidden h-full flex-none flex-col border-r border-slate-200/60 bg-white/70 p-4 transition-all duration-300 dark:border-white/10 dark:bg-slate-950/60 xl:flex ${leftCollapsed ? 'w-16' : 'w-[22rem]'}`}
+        className={`relative hidden h-full flex-none overflow-hidden border-r border-slate-200/60 bg-white/70 p-4 transition-all duration-300 dark:border-white/10 dark:bg-slate-950/60 xl:flex xl:flex-col ${leftCollapsed ? 'w-16' : 'w-[22rem]'}`}
       >
         <button
           type="button"
@@ -585,7 +656,10 @@ export default function Playground() {
                     <button
                       key={kb.id}
                       type="button"
-                      onClick={() => setSelectedId(kb.id)}
+                          onClick={() => {
+                            setSelectedId(kb.id)
+                            setSelectedDocumentId(null)
+                          }}
                       className={`flex flex-col gap-2 rounded-2xl border px-4 py-3 text-left text-sm transition shadow-sm ${
                         selected
                           ? 'border-brand-400 bg-brand-100/60 text-brand-800 dark:border-brand-200/40 dark:bg-brand-300/10 dark:text-brand-50'
@@ -628,26 +702,88 @@ export default function Playground() {
                 <p className="text-xs text-slate-500 dark:text-slate-300">No documents yet—use the ingestion tools on the right.</p>
               )}
               {selectedId && detail && detail.documents.length > 0 && (
-                <ul className="space-y-3 text-xs">
-                  {detail.documents.map((doc) => (
-                    <li
-                      key={doc.id}
-                      className="rounded-2xl border border-slate-200/60 bg-white/80 px-4 py-3 shadow-sm dark:border-white/10 dark:bg-slate-900/60"
-                    >
-                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900 dark:text-white">{doc.title}</p>
-                          {doc.original_filename && (
-                            <p className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-400">{doc.original_filename}</p>
-                          )}
-                        </div>
-                        <span className="text-[11px] text-slate-500 dark:text-slate-300">
-                          {doc.chunk_count} chunks • {(doc.size_bytes / 1024).toFixed(1)} KB
-                        </span>
+                <>
+                  <ul className="space-y-3 text-xs">
+                    {detail.documents.map((doc) => {
+                      const active = doc.id === selectedDocumentId
+                      return (
+                        <li key={doc.id}>
+                          <button
+                            type="button"
+                            onClick={() => handleDocumentSelect(doc.id)}
+                            className={`w-full rounded-2xl border px-4 py-3 text-left shadow-sm transition ${
+                              active
+                                ? 'border-brand-400 bg-brand-100/50 text-brand-800 dark:border-brand-200/40 dark:bg-brand-300/10 dark:text-brand-50'
+                                : 'border-slate-200/60 bg-white/80 text-slate-700 hover:border-brand-300 hover:text-brand-700 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-200'
+                            }`}
+                          >
+                            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900 dark:text-white">{doc.title}</p>
+                                {doc.original_filename && (
+                                  <p className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-400">
+                                    {doc.original_filename}
+                                  </p>
+                                )}
+                              </div>
+                              <span className="text-[11px] text-slate-500 dark:text-slate-300">
+                                {doc.chunk_count} chunks • {(doc.size_bytes / 1024).toFixed(1)} KB
+                              </span>
+                            </div>
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+
+                  <div className="mt-4 rounded-2xl border border-slate-200/60 bg-white/80 p-4 shadow-sm dark:border-white/10 dark:bg-slate-900/60">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Document preview</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-300">
+                          {documentDetail ? documentDetail.title : 'Select a document to browse its chunks.'}
+                        </p>
                       </div>
-                    </li>
-                  ))}
-                </ul>
+                      {documentDetail && (
+                        <span className="text-[11px] text-slate-500 dark:text-slate-300">
+                          {documentDetail.chunk_count} chunks
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-3 text-xs text-slate-600 dark:text-slate-300">
+                      {documentLoading && <p>Loading document…</p>}
+                      {!documentLoading && documentError && <p className="text-red-500 dark:text-red-400">{documentError}</p>}
+                      {!documentLoading && !documentError && documentDetail && (
+                        <div className="space-y-3">
+                          {documentDetail.original_filename && (
+                            <p className="text-[11px] uppercase tracking-wide text-slate-400 dark:text-slate-400">
+                              Source file: {documentDetail.original_filename}
+                            </p>
+                          )}
+                          <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200/60 bg-white/90 p-3 dark:border-white/10 dark:bg-slate-950/50">
+                            {documentDetail.chunks.length === 0 ? (
+                              <p className="text-xs text-slate-500 dark:text-slate-300">No chunk data available for this document.</p>
+                            ) : (
+                              <ul className="space-y-3">
+                                {documentDetail.chunks.map((chunk) => (
+                                  <li key={chunk.id} className="rounded-lg bg-slate-100/80 p-3 text-slate-700 dark:bg-slate-900/60 dark:text-slate-200">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                      Chunk {chunk.id.slice(0, 8)}…
+                                    </p>
+                                    <pre className="mt-2 whitespace-pre-wrap text-xs leading-relaxed">{chunk.content}</pre>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {!documentLoading && !documentError && !documentDetail && (
+                        <p className="text-xs text-slate-500 dark:text-slate-300">Pick a document to preview its chunks.</p>
+                      )}
+                    </div>
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -655,7 +791,7 @@ export default function Playground() {
       </section>
 
       <aside
-        className={`relative hidden h-full flex-none flex-col border-l border-slate-200/60 bg-white/70 p-4 transition-all duration-300 dark:border-white/10 dark:bg-slate-950/60 xl:flex ${rightCollapsed ? 'w-16' : 'w-[22rem]'}`}
+        className={`relative hidden h-full flex-none overflow-hidden border-l border-slate-200/60 bg-white/70 p-4 transition-all duration-300 dark:border-white/10 dark:bg-slate-950/60 xl:flex xl:flex-col ${rightCollapsed ? 'w-16' : 'w-[22rem]'}`}
       >
         <button
           type="button"

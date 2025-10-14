@@ -11,6 +11,15 @@ export interface KnowledgeDocument {
   metadata: Record<string, unknown>
 }
 
+export interface KnowledgeDocumentChunk {
+  id: string
+  content: string
+}
+
+export interface KnowledgeDocumentDetail extends KnowledgeDocument {
+  chunks: KnowledgeDocumentChunk[]
+}
+
 export interface KnowledgeBaseSummary {
   id: string
   name: string
@@ -67,6 +76,10 @@ export function listKnowledgeBases(): Promise<KnowledgeBaseSummary[]> {
 
 export function getKnowledgeBase(id: string): Promise<KnowledgeBaseDetail> {
   return request(`/knowledge-bases/${id}`)
+}
+
+export function getKnowledgeDocument(kbId: string, docId: string): Promise<KnowledgeDocumentDetail> {
+  return request(`/knowledge-bases/${kbId}/documents/${docId}`)
 }
 
 export function createKnowledgeBase(body: { name: string; description?: string | null }): Promise<KnowledgeBaseDetail> {

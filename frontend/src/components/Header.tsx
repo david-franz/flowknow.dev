@@ -4,8 +4,8 @@ import { useDark } from '../lib/useDark'
 
 const navItems = [
   { to: '/', label: 'Home', match: ['/'] },
-  { to: '/playground', label: 'Playground', match: ['/playground', '/workbench'] },
   { to: '/docs', label: 'Docs', match: ['/docs'] },
+  { to: '/playground', label: 'Playground', match: ['/playground', '/workbench'] },
 ]
 
 export function Header() {
